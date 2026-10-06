@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+
+bin/
+tmp/
+*.log
+
+# Go build output
+nez-widget-platform
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
