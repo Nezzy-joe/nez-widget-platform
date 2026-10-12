@@ -69,7 +69,7 @@ func (s *AuthService) Register(
 	)
 	if err != nil {
 		if errors.Is(err, repository.ErrEmailAlreadyExists) {
-			return nil, err
+			return nil, ErrEmailAlreadyExists
 		}
 
 		return nil, fmt.Errorf("register user: %w", err)

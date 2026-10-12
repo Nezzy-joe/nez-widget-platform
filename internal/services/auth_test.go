@@ -252,3 +252,38 @@ func TestLoginRejectsUnknownUser(t *testing.T) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
+
+func TestRegisterMapsDuplicateEmailError(t *testing.T) {
+	store := &fakeUserStore{
+		findByEmailFunc: func(
+			context.Context,
+			string,
+		) (*models.User, error) {
+			return nil, repository.ErrUserNotFound
+		},
+		createTenantAndUserFunc: func(
+			context.Context,
+			string,
+			string,
+			string,
+		) (*models.User, error) {
+			return nil, repository.ErrEmailAlreadyExists
+		},
+	}
+
+	service := NewAuthService(store)
+
+	_, err := service.Register(
+		context.Background(),
+		"NezWidget Demo",
+		"joe@example.com",
+		"DemoPass123!",
+	)
+
+	if !errors.Is(err, ErrEmailAlreadyExists) {
+		t.Fatalf(
+			"expected ErrEmailAlreadyExists, got %v",
+			err,
+		)
+	}
+}
