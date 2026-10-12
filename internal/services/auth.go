@@ -15,6 +15,7 @@ import (
 var (
 	ErrInvalidRegistration = errors.New("invalid registration input")
 	ErrInvalidCredentials  = errors.New("invalid email or password")
+	ErrEmailAlreadyExists  = errors.New("email already exists")
 )
 
 type UserStore interface {

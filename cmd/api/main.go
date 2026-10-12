@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/Nezzy-joe/nez-widget-platform/internal/config"
+	"github.com/Nezzy-joe/nez-widget-platform/internal/handlers"
+	"github.com/Nezzy-joe/nez-widget-platform/internal/middleware"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/repository"
+	"github.com/Nezzy-joe/nez-widget-platform/internal/services"
 	"github.com/joho/godotenv"
 )
 
@@ -18,37 +22,55 @@ type HealthResponse struct {
 }
 
 func main() {
-	// Load local development environment variables.
-	// In deployed environments, variables can be injected directly.
+	if err := run(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	// Local development only; deployed environments should inject variables.
 	if err := godotenv.Load(); err != nil {
 		log.Printf("warning: could not load .env: %v", err)
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	db, err := repository.NewPostgresPool(ctx, cfg.DatabaseURL)
+	jwtService, err := services.NewJWTService(cfg.JWTSecret)
 	if err != nil {
-		log.Fatal(err)
+		return err
+	}
+
+	startupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	db, err := repository.NewPostgresPool(startupCtx, cfg.DatabaseURL)
+	cancel()
+	if err != nil {
+		return err
 	}
 	defer db.Close()
+
+	userRepository := repository.NewUserRepository(db)
+	authService := services.NewAuthService(userRepository)
+	authHandler := handlers.NewAuthHandler(authService, jwtService)
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
 		healthCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
+		w.Header().Set("Content-Type", "application/json")
+
 		if err := db.Ping(healthCtx); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-
 			_ = json.NewEncoder(w).Encode(HealthResponse{
 				Status:   "error",
 				Database: "unavailable",
@@ -57,21 +79,26 @@ func main() {
 		}
 
 		w.WriteHeader(http.StatusOK)
-
 		_ = json.NewEncoder(w).Encode(HealthResponse{
 			Status:   "ok",
 			Database: "ok",
 		})
 	})
 
+	mux.HandleFunc("/auth/register", authHandler.Register)
+	mux.HandleFunc("/auth/login", authHandler.Login)
+	mux.Handle(
+		"/auth/me",
+		middleware.RequireAuth(jwtService)(http.HandlerFunc(authHandler.Me)),
+	)
+
 	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: mux,
+		Addr:              ":" + cfg.Port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	log.Printf("API server listening on http://localhost:%s", cfg.Port)
 
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
-	}
+	return server.ListenAndServe()
 }
