@@ -108,7 +108,10 @@ func run() error {
 			http.HandlerFunc(widgetHandler.Item),
 		),
 	)
-
+	mux.Handle(
+		"/public/widgets/",
+		http.HandlerFunc(widgetHandler.PublicConfig),
+	)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           mux,

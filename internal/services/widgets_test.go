@@ -17,6 +17,11 @@ type fakeWidgetStore struct {
 	getFn    func(context.Context, string, string) (*models.Widget, error)
 	updateFn func(context.Context, string, string, *models.Widget) (*models.Widget, error)
 	deleteFn func(context.Context, string, string) error
+
+	getByPublicIDFn func(
+		context.Context,
+		string,
+	) (*models.Widget, error)
 }
 
 func (f *fakeWidgetStore) Create(
@@ -49,6 +54,17 @@ func (f *fakeWidgetStore) GetByID(
 		return nil, errors.New("unexpected GetByID call")
 	}
 	return f.getFn(ctx, tenantID, widgetID)
+}
+
+func (f *fakeWidgetStore) GetByPublicID(
+	ctx context.Context,
+	publicID string,
+) (*models.Widget, error) {
+	if f.getByPublicIDFn == nil {
+		return nil, errors.New("unexpected GetByPublicID call")
+	}
+
+	return f.getByPublicIDFn(ctx, publicID)
 }
 
 func (f *fakeWidgetStore) Update(
@@ -287,5 +303,73 @@ func TestWidgetServiceTranslatesWidgetNotFound(t *testing.T) {
 	)
 	if !errors.Is(err, ErrWidgetNotFound) {
 		t.Fatalf("expected service ErrWidgetNotFound, got %v", err)
+	}
+}
+func TestWidgetServiceGetPublicByPublicID(t *testing.T) {
+	publicID := "0123456789abcdef0123456789abcdef0123"
+
+	store := &fakeWidgetStore{
+		getByPublicIDFn: func(
+			_ context.Context,
+			gotPublicID string,
+		) (*models.Widget, error) {
+			if gotPublicID != publicID {
+				t.Fatalf("unexpected public ID: %q", gotPublicID)
+			}
+
+			return &models.Widget{
+				PublicID:       publicID,
+				Type:           "signup",
+				Title:          "Public Signup",
+				ButtonText:     "Register",
+				DisplayOptions: json.RawMessage(`{}`),
+			}, nil
+		},
+	}
+
+	service := NewWidgetService(store)
+
+	widget, err := service.GetPublic(context.Background(), publicID)
+	if err != nil {
+		t.Fatalf("GetPublic returned an error: %v", err)
+	}
+
+	if widget.PublicID != publicID {
+		t.Fatalf("unexpected public ID in result: %q", widget.PublicID)
+	}
+
+	if widget.Title != "Public Signup" {
+		t.Fatalf("unexpected widget title: %q", widget.Title)
+	}
+}
+
+func TestWidgetServiceGetPublicMapsNotFound(t *testing.T) {
+	store := &fakeWidgetStore{
+		getByPublicIDFn: func(
+			_ context.Context,
+			_ string,
+		) (*models.Widget, error) {
+			return nil, repository.ErrWidgetNotFound
+		},
+	}
+
+	service := NewWidgetService(store)
+
+	_, err := service.GetPublic(
+		context.Background(),
+		"missing-public-id",
+	)
+
+	if !errors.Is(err, ErrWidgetNotFound) {
+		t.Fatalf("expected ErrWidgetNotFound, got %v", err)
+	}
+}
+
+func TestWidgetServiceGetPublicRejectsEmptyPublicID(t *testing.T) {
+	service := NewWidgetService(&fakeWidgetStore{})
+
+	_, err := service.GetPublic(context.Background(), "   ")
+	if !errors.Is(err, ErrInvalidWidget) {
+		t.Fatalf("expected ErrInvalidWidget, got %v", err)
 	}
 }

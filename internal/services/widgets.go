@@ -47,6 +47,10 @@ type WidgetStore interface {
 		tenantID string,
 		widgetID string,
 	) (*models.Widget, error)
+	GetByPublicID(
+		ctx context.Context,
+		publicID string,
+	) (*models.Widget, error)
 
 	Update(
 		ctx context.Context,
@@ -134,6 +138,24 @@ func (s *WidgetService) Get(
 	}
 
 	widget, err := s.widgets.GetByID(ctx, tenantID, widgetID)
+	if err != nil {
+		return nil, translateWidgetError(err)
+	}
+
+	return widget, nil
+}
+
+// GetPublic retrieves widget configuration using its public identifier.
+func (s *WidgetService) GetPublic(
+	ctx context.Context,
+	publicID string,
+) (*models.Widget, error) {
+	publicID = strings.TrimSpace(publicID)
+	if publicID == "" {
+		return nil, ErrInvalidWidget
+	}
+
+	widget, err := s.widgets.GetByPublicID(ctx, publicID)
 	if err != nil {
 		return nil, translateWidgetError(err)
 	}

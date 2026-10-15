@@ -76,6 +76,40 @@ func TestWidgetRepositoryTenantIsolation(t *testing.T) {
 		t.Fatalf("expected one saved field, got %d", len(createdA.Fields))
 	}
 
+	// A public ID retrieves the correct widget and its configured fields.
+	publicWidget, err := repo.GetByPublicID(ctx, createdA.PublicID)
+	if err != nil {
+		t.Fatalf("get widget by public ID: %v", err)
+	}
+
+	if publicWidget.ID != createdA.ID {
+		t.Fatalf(
+			"public ID returned the wrong widget: got %q, want %q",
+			publicWidget.ID,
+			createdA.ID,
+		)
+	}
+
+	if publicWidget.Title != "Tenant A Signup" {
+		t.Fatalf("unexpected public widget title: %q", publicWidget.Title)
+	}
+
+	if len(publicWidget.Fields) != 1 {
+		t.Fatalf(
+			"expected one field from public lookup, got %d",
+			len(publicWidget.Fields),
+		)
+	}
+
+	// An unknown public ID must not return a widget.
+	_, err = repo.GetByPublicID(ctx, "missing-public-id-"+suffix)
+	if !errors.Is(err, ErrWidgetNotFound) {
+		t.Fatalf(
+			"expected ErrWidgetNotFound for unknown public ID, got %v",
+			err,
+		)
+	}
+
 	// Tenant A must not see tenant B's widget in its list.
 	listA, err := repo.ListByTenant(ctx, tenantA)
 	if err != nil {

@@ -266,6 +266,7 @@ func (r *WidgetRepository) GetByID(
 	tenantID string,
 	widgetID string,
 ) (*models.Widget, error) {
+
 	if err := requireTenantID(tenantID); err != nil {
 		return nil, err
 	}
@@ -282,6 +283,41 @@ func (r *WidgetRepository) GetByID(
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get widget: %w", err)
+	}
+
+	widget.Fields, err = r.loadWidgetFields(ctx, widget.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return widget, nil
+}
+
+// GetByPublicID fetches a widget using its unique public identifier.
+// This lookup is intended for public widget configuration, not management.
+func (r *WidgetRepository) GetByPublicID(
+	ctx context.Context,
+	publicID string,
+) (*models.Widget, error) {
+	publicID = strings.TrimSpace(publicID)
+	if publicID == "" {
+		return nil, ErrWidgetNotFound
+	}
+
+	query := `
+        SELECT ` + widgetColumns + `
+        FROM widgets
+        WHERE public_id = $1
+    `
+
+	widget, err := scanWidget(
+		r.db.QueryRow(ctx, query, publicID),
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrWidgetNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get widget by public ID: %w", err)
 	}
 
 	widget.Fields, err = r.loadWidgetFields(ctx, widget.ID)
