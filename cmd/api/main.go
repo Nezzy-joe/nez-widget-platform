@@ -55,6 +55,10 @@ func run() error {
 	authService := services.NewAuthService(userRepository)
 	authHandler := handlers.NewAuthHandler(authService, jwtService)
 
+	widgetRepository := repository.NewWidgetRepository(db)
+	widgetService := services.NewWidgetService(widgetRepository)
+	widgetHandler := handlers.NewWidgetHandler(widgetService)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +94,19 @@ func run() error {
 	mux.Handle(
 		"/auth/me",
 		middleware.RequireAuth(jwtService)(http.HandlerFunc(authHandler.Me)),
+	)
+	mux.Handle(
+		"/widgets",
+		middleware.RequireAuth(jwtService)(
+			http.HandlerFunc(widgetHandler.Collection),
+		),
+	)
+
+	mux.Handle(
+		"/widgets/",
+		middleware.RequireAuth(jwtService)(
+			http.HandlerFunc(widgetHandler.Item),
+		),
 	)
 
 	server := &http.Server{
