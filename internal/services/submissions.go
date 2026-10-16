@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/mail"
 	"net/url"
@@ -38,19 +39,27 @@ type SubmissionStore interface {
 		submission *models.Submission,
 	) (*models.Submission, error)
 }
-
+type GeoLookup interface {
+	Lookup(
+		ctx context.Context,
+		ipAddress string,
+	) (models.GeoLocation, error)
+}
 type SubmissionService struct {
 	widgets     PublicWidgetLookup
 	submissions SubmissionStore
+	geolocator  GeoLookup
 }
 
 func NewSubmissionService(
 	widgets PublicWidgetLookup,
 	submissions SubmissionStore,
+	geolocator GeoLookup,
 ) *SubmissionService {
 	return &SubmissionService{
 		widgets:     widgets,
 		submissions: submissions,
+		geolocator:  geolocator,
 	}
 }
 
@@ -85,11 +94,28 @@ func (s *SubmissionService) Create(
 		return nil, err
 	}
 
+	var location models.GeoLocation
+
+	if s.geolocator != nil && strings.TrimSpace(ipAddress) != "" {
+		resolved, geoErr := s.geolocator.Lookup(ctx, ipAddress)
+		if geoErr != nil {
+			// Geolocation is optional. A provider outage must not
+			// prevent a valid submission from being stored.
+			log.Printf(
+				"geolocation unavailable; continuing without location data",
+			)
+		} else {
+			location = resolved
+		}
+	}
+
 	submission := &models.Submission{
 		TenantID:  widget.TenantID,
 		WidgetID:  widget.ID,
 		Data:      validatedData,
 		IPAddress: ipAddress,
+		Country:   location.Country,
+		City:      location.City,
 	}
 
 	created, err := s.submissions.Create(

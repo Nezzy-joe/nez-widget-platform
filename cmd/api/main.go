@@ -11,6 +11,7 @@ import (
 	"github.com/Nezzy-joe/nez-widget-platform/internal/config"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/handlers"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/middleware"
+	"github.com/Nezzy-joe/nez-widget-platform/internal/providers"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/repository"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/services"
 	"github.com/joho/godotenv"
@@ -61,9 +62,15 @@ func run() error {
 
 	submissionRepository := repository.NewSubmissionRepository(db)
 
+	geoLocator := providers.NewGeoLocator(
+		providers.NewIPAPIProvider(nil, ""),
+		providers.NewIPAPICoProvider(nil, ""),
+	)
+
 	submissionService := services.NewSubmissionService(
 		widgetService,
 		submissionRepository,
+		geoLocator,
 	)
 
 	submissionHandler := handlers.NewSubmissionHandler(

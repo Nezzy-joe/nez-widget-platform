@@ -51,6 +51,22 @@ func (s *submissionStoreStub) Create(
 	return &saved, nil
 }
 
+type geoLookupStub struct {
+	location models.GeoLocation
+	err      error
+	calls    int
+	gotIP    string
+}
+
+func (s *geoLookupStub) Lookup(
+	_ context.Context,
+	ipAddress string,
+) (models.GeoLocation, error) {
+	s.calls++
+	s.gotIP = ipAddress
+	return s.location, s.err
+}
+
 func validSubmissionWidget() *models.Widget {
 	return &models.Widget{
 		ID:       "internal-widget-id",
@@ -78,6 +94,7 @@ func TestSubmissionServiceCreateValidSubmission(t *testing.T) {
 	service := NewSubmissionService(
 		&submissionWidgetLookupStub{widget: widget},
 		store,
+		nil,
 	)
 
 	submission, err := service.Create(
@@ -178,6 +195,7 @@ func TestSubmissionServiceRejectsInvalidPayloads(t *testing.T) {
 			service := NewSubmissionService(
 				&submissionWidgetLookupStub{widget: widget},
 				store,
+				nil,
 			)
 
 			_, err := service.Create(
@@ -204,8 +222,8 @@ func TestSubmissionServiceRejectsUnknownWidget(t *testing.T) {
 			err: ErrWidgetNotFound,
 		},
 		store,
+		nil,
 	)
-
 	_, err := service.Create(
 		context.Background(),
 		"missing-public-id",
@@ -218,5 +236,107 @@ func TestSubmissionServiceRejectsUnknownWidget(t *testing.T) {
 	}
 	if store.calls != 0 {
 		t.Fatal("unknown widget must not reach the repository")
+	}
+}
+func TestSubmissionServiceStoresGeolocation(t *testing.T) {
+	widget := validSubmissionWidget()
+	store := &submissionStoreStub{}
+
+	geo := &geoLookupStub{
+		location: models.GeoLocation{
+			Country: "Nigeria",
+			City:    "Lagos",
+		},
+	}
+
+	service := NewSubmissionService(
+		&submissionWidgetLookupStub{widget: widget},
+		store,
+		geo,
+	)
+
+	created, err := service.Create(
+		context.Background(),
+		widget.PublicID,
+		json.RawMessage(`{
+			"full_name": "Test Visitor",
+			"email": "visitor@example.com"
+		}`),
+		"203.0.113.10",
+	)
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+
+	if geo.calls != 1 {
+		t.Fatalf("expected one geolocation lookup, got %d", geo.calls)
+	}
+
+	if geo.gotIP != "203.0.113.10" {
+		t.Fatalf("unexpected lookup IP: %q", geo.gotIP)
+	}
+
+	if store.calls != 1 {
+		t.Fatalf("expected one persistence call, got %d", store.calls)
+	}
+
+	if store.input.Country != "Nigeria" ||
+		store.input.City != "Lagos" {
+		t.Fatalf(
+			"location was not saved: country=%q city=%q",
+			store.input.Country,
+			store.input.City,
+		)
+	}
+
+	if created.Country != "Nigeria" || created.City != "Lagos" {
+		t.Fatalf("unexpected created submission location: %+v", created)
+	}
+}
+func TestSubmissionServiceStoresSubmissionWhenGeolocationFails(
+	t *testing.T,
+) {
+	widget := validSubmissionWidget()
+	store := &submissionStoreStub{}
+
+	geo := &geoLookupStub{
+		err: errors.New("all geolocation providers unavailable"),
+	}
+
+	service := NewSubmissionService(
+		&submissionWidgetLookupStub{widget: widget},
+		store,
+		geo,
+	)
+
+	created, err := service.Create(
+		context.Background(),
+		widget.PublicID,
+		json.RawMessage(`{
+			"full_name": "Test Visitor",
+			"email": "visitor@example.com"
+		}`),
+		"203.0.113.10",
+	)
+	if err != nil {
+		t.Fatalf("geolocation failure blocked the submission: %v", err)
+	}
+
+	if store.calls != 1 {
+		t.Fatalf(
+			"expected submission to be stored once, got %d calls",
+			store.calls,
+		)
+	}
+
+	if store.input.Country != "" || store.input.City != "" {
+		t.Fatalf(
+			"expected empty location after provider failure, got %+v",
+			store.input,
+		)
+	}
+
+	if created.ID != "saved-submission-id" {
+		t.Fatalf("submission was not persisted: %+v", created)
 	}
 }
