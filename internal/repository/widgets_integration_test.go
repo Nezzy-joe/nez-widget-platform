@@ -71,6 +71,61 @@ func TestWidgetRepositoryTenantIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create tenant B widget: %v", err)
 	}
+	// A valid submission must persist under the correct tenant and widget.
+	submissionRepo := NewSubmissionRepository(pool)
+
+	createdSubmission, err := submissionRepo.Create(
+		ctx,
+		tenantA,
+		&models.Submission{
+			WidgetID:  createdA.ID,
+			Data:      json.RawMessage(`{"email":"test@example.com"}`),
+			IPAddress: "203.0.113.10",
+			Country:   "Nigeria",
+			City:      "Lagos",
+		},
+	)
+	if err != nil {
+		t.Fatalf("create submission: %v", err)
+	}
+
+	if createdSubmission.TenantID != tenantA {
+		t.Fatalf("wrong submission tenant: %q", createdSubmission.TenantID)
+	}
+
+	if createdSubmission.WidgetID != createdA.ID {
+		t.Fatalf("wrong submission widget: %q", createdSubmission.WidgetID)
+	}
+
+	if string(createdSubmission.Data) != `{"email": "test@example.com"}` &&
+		string(createdSubmission.Data) != `{"email":"test@example.com"}` {
+		t.Fatalf("unexpected submission data: %s", createdSubmission.Data)
+	}
+
+	if createdSubmission.Country != "Nigeria" ||
+		createdSubmission.City != "Lagos" {
+		t.Fatalf(
+			"unexpected location data: country=%q city=%q",
+			createdSubmission.Country,
+			createdSubmission.City,
+		)
+	}
+
+	// Tenant B must not submit against Tenant A's widget.
+	_, err = submissionRepo.Create(
+		ctx,
+		tenantB,
+		&models.Submission{
+			WidgetID: createdA.ID,
+			Data:     json.RawMessage(`{"email":"intruder@example.com"}`),
+		},
+	)
+	if !errors.Is(err, ErrWidgetNotFound) {
+		t.Fatalf(
+			"expected ErrWidgetNotFound for cross-tenant submission, got %v",
+			err,
+		)
+	}
 
 	if len(createdA.Fields) != 1 {
 		t.Fatalf("expected one saved field, got %d", len(createdA.Fields))
