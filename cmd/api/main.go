@@ -59,6 +59,17 @@ func run() error {
 	widgetService := services.NewWidgetService(widgetRepository)
 	widgetHandler := handlers.NewWidgetHandler(widgetService)
 
+	submissionRepository := repository.NewSubmissionRepository(db)
+
+	submissionService := services.NewSubmissionService(
+		widgetService,
+		submissionRepository,
+	)
+
+	submissionHandler := handlers.NewSubmissionHandler(
+		submissionService,
+	)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -111,6 +122,11 @@ func run() error {
 	mux.Handle(
 		"/public/widgets/",
 		http.HandlerFunc(widgetHandler.PublicConfig),
+	)
+
+	mux.Handle(
+		"/submissions",
+		http.HandlerFunc(submissionHandler.Create),
 	)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
