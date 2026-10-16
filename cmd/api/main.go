@@ -6,10 +6,14 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Nezzy-joe/nez-widget-platform/internal/config"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/handlers"
+	"github.com/Nezzy-joe/nez-widget-platform/internal/jobs"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/middleware"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/providers"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/repository"
@@ -61,6 +65,36 @@ func run() error {
 	widgetHandler := handlers.NewWidgetHandler(widgetService)
 
 	submissionRepository := repository.NewSubmissionRepository(db)
+	jobRepository := repository.NewJobRepository(db)
+
+	confirmationSender := jobs.NewConsoleConfirmationSender(nil)
+	backgroundWorker := jobs.NewWorker(
+		jobRepository,
+		confirmationSender,
+	)
+
+	appCtx, stopApp := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stopApp()
+
+	workerDone := make(chan struct{})
+
+	go func() {
+		defer close(workerDone)
+
+		if err := backgroundWorker.Run(appCtx); err != nil &&
+			appCtx.Err() == nil {
+			log.Printf("background worker stopped: %v", err)
+		}
+	}()
+
+	defer func() {
+		stopApp()
+		<-workerDone
+	}()
 
 	geoLocator := providers.NewGeoLocator(
 		providers.NewIPAPIProvider(nil, ""),
@@ -143,5 +177,36 @@ func run() error {
 
 	log.Printf("API server listening on http://localhost:%s", cfg.Port)
 
-	return server.ListenAndServe()
+	serverErr := make(chan error, 1)
+
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErr:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+
+	case <-appCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+			return err
+		}
+
+		err := <-serverErr
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+
+		return nil
+	}
 }

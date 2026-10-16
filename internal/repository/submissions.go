@@ -54,7 +54,13 @@ func (r *SubmissionRepository) Create(
 	if ipAddress != "" && net.ParseIP(ipAddress) == nil {
 		return nil, errors.New("submission IP address is invalid")
 	}
-
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin submission transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(context.Background())
+	}()
 	// INSERT ... SELECT enforces tenant ownership in the database
 	// statement itself. A mismatched tenant cannot create a submission.
 	const query = `
@@ -91,7 +97,7 @@ func (r *SubmissionRepository) Create(
 	var rawData []byte
 	var savedIP, savedCountry, savedCity sql.NullString
 
-	err := r.db.QueryRow(
+	err = tx.QueryRow(
 		ctx,
 		query,
 		tenantID,
@@ -127,6 +133,20 @@ func (r *SubmissionRepository) Create(
 	}
 	if savedCity.Valid {
 		created.City = savedCity.String
+	}
+
+	// Queue the confirmation job in the same transaction as the submission.
+	_, err = tx.Exec(ctx, `
+    INSERT INTO background_jobs (submission_id, job_type)
+    VALUES ($1, $2)
+    ON CONFLICT (submission_id, job_type) DO NOTHING
+`, created.ID, JobTypeConfirmationEmail)
+	if err != nil {
+		return nil, fmt.Errorf("enqueue confirmation job: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit submission transaction: %w", err)
 	}
 
 	return &created, nil
