@@ -271,3 +271,104 @@ func (r *SubmissionRepository) ListByTenant(
 
 	return submissions, total, nil
 }
+
+// GetAnalyticsByTenant returns submission counts and seven days of activity.
+// The date buckets use the PostgreSQL session's calendar timezone.
+func (r *SubmissionRepository) GetAnalyticsByTenant(
+	ctx context.Context,
+	tenantID string,
+	widgetID string,
+) (*models.SubmissionAnalytics, error) {
+	if err := requireTenantID(tenantID); err != nil {
+		return nil, err
+	}
+
+	widgetID = strings.TrimSpace(widgetID)
+
+	// The tenant filter is mandatory. The optional widget filter
+	// narrows the results without changing tenant ownership.
+	where := "tenant_id = $1"
+	args := []any{tenantID}
+
+	dailyWidgetFilter := ""
+	dailyArgs := []any{tenantID}
+
+	if widgetID != "" {
+		where += " AND widget_id = $2"
+		args = append(args, widgetID)
+
+		dailyWidgetFilter = " AND s.widget_id = $2"
+		dailyArgs = append(dailyArgs, widgetID)
+	}
+
+	summaryQuery := fmt.Sprintf(`
+		SELECT
+			COUNT(*)::int,
+			(COUNT(*) FILTER (
+				WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
+                                AND created_at < CURRENT_DATE + INTERVAL '1 day'
+			))::int,
+			(COUNT(*) FILTER (
+				WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
+                                AND created_at < CURRENT_DATE + INTERVAL '1 day'
+			))::int
+		FROM submissions
+		WHERE %s
+	`, where)
+
+	analytics := &models.SubmissionAnalytics{}
+
+	if err := r.db.QueryRow(
+		ctx,
+		summaryQuery,
+		args...,
+	).Scan(
+		&analytics.TotalSubmissions,
+		&analytics.Last7Days,
+		&analytics.Last30Days,
+	); err != nil {
+		return nil, fmt.Errorf("query submission analytics summary: %w", err)
+	}
+
+	dailyQuery := fmt.Sprintf(`
+		SELECT
+			to_char(calendar.day, 'YYYY-MM-DD'),
+			COUNT(s.id)::int
+		FROM generate_series(
+			CURRENT_DATE - INTERVAL '6 days',
+			CURRENT_DATE,
+			INTERVAL '1 day'
+		) AS calendar(day)
+		LEFT JOIN submissions AS s
+			ON s.tenant_id = $1
+			AND s.created_at >= calendar.day
+			AND s.created_at < calendar.day + INTERVAL '1 day'
+			%s
+		GROUP BY calendar.day
+		ORDER BY calendar.day
+	`, dailyWidgetFilter)
+
+	rows, err := r.db.Query(ctx, dailyQuery, dailyArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("query daily submission analytics: %w", err)
+	}
+	defer rows.Close()
+
+	analytics.Daily = make([]models.DailySubmissionCount, 0, 7)
+
+	for rows.Next() {
+		var day models.DailySubmissionCount
+
+		if err := rows.Scan(&day.Date, &day.Count); err != nil {
+			return nil, fmt.Errorf("scan daily submission analytics: %w", err)
+		}
+
+		analytics.Daily = append(analytics.Daily, day)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate daily submission analytics: %w", err)
+	}
+
+	return analytics, nil
+}
