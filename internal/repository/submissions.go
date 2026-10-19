@@ -151,3 +151,123 @@ func (r *SubmissionRepository) Create(
 
 	return &created, nil
 }
+
+// ListByTenant returns a paginated list of submissions belonging to a tenant.
+// An optional widget ID narrows the results without removing tenant isolation.
+func (r *SubmissionRepository) ListByTenant(
+	ctx context.Context,
+	tenantID string,
+	widgetID string,
+	limit int,
+	offset int,
+) ([]models.Submission, int, error) {
+	if err := requireTenantID(tenantID); err != nil {
+		return nil, 0, err
+	}
+
+	if limit < 1 || limit > 100 {
+		return nil, 0, errors.New("limit must be between 1 and 100")
+	}
+
+	if offset < 0 {
+		return nil, 0, errors.New("offset cannot be negative")
+	}
+
+	widgetID = strings.TrimSpace(widgetID)
+
+	// The tenant filter is always present. The optional widget filter
+	// can only narrow the tenant's results.
+	where := "tenant_id = $1"
+	countArgs := []any{tenantID}
+
+	if widgetID != "" {
+		where += " AND widget_id = $2"
+		countArgs = append(countArgs, widgetID)
+	}
+
+	var total int
+	countQuery := fmt.Sprintf(
+		"SELECT COUNT(*) FROM submissions WHERE %s",
+		where,
+	)
+
+	if err := r.db.QueryRow(
+		ctx,
+		countQuery,
+		countArgs...,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf(
+			"count tenant submissions: %w", err,
+		)
+	}
+
+	args := append([]any{}, countArgs...)
+	args = append(args, limit, offset)
+
+	limitPosition := len(args) - 1
+	offsetPosition := len(args)
+
+	query := fmt.Sprintf(`
+		SELECT
+			id,
+			tenant_id,
+			widget_id,
+			data,
+			country,
+			city,
+			created_at
+		FROM submissions
+		WHERE %s
+		ORDER BY created_at DESC, id DESC
+		LIMIT $%d OFFSET $%d
+	`, where, limitPosition, offsetPosition)
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf(
+			"list tenant submissions: %w", err,
+		)
+	}
+	defer rows.Close()
+
+	submissions := make([]models.Submission, 0)
+
+	for rows.Next() {
+		var submission models.Submission
+		var rawData []byte
+		var country, city sql.NullString
+
+		if err := rows.Scan(
+			&submission.ID,
+			&submission.TenantID,
+			&submission.WidgetID,
+			&rawData,
+			&country,
+			&city,
+			&submission.CreatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf(
+				"scan submission: %w", err,
+			)
+		}
+
+		submission.Data = json.RawMessage(rawData)
+
+		if country.Valid {
+			submission.Country = country.String
+		}
+		if city.Valid {
+			submission.City = city.String
+		}
+
+		submissions = append(submissions, submission)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf(
+			"iterate submissions: %w", err,
+		)
+	}
+
+	return submissions, total, nil
+}

@@ -111,6 +111,13 @@ func run() error {
 		submissionService,
 	)
 
+	dashboardSubmissionService := services.NewDashboardSubmissionService(
+		submissionRepository,
+	)
+	dashboardSubmissionHandler := handlers.NewDashboardSubmissionHandler(
+		dashboardSubmissionService,
+	)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +175,13 @@ func run() error {
 	mux.Handle(
 		"/submissions",
 		http.HandlerFunc(submissionHandler.Create),
+	)
+
+	mux.Handle(
+		"/dashboard/submissions",
+		middleware.RequireAuth(jwtService)(
+			http.HandlerFunc(dashboardSubmissionHandler.List),
+		),
 	)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
