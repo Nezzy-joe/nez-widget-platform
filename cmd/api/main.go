@@ -127,6 +127,12 @@ func run() error {
 
 	mux := http.NewServeMux()
 
+	// Serve the versioned JavaScript bundle used by external websites.
+	mux.Handle(
+		"/widget/v1/widget.js",
+		handlers.NewWidgetAssetHandler(),
+	)
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
