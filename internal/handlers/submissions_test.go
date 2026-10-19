@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Nezzy-joe/nez-widget-platform/internal/models"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/services"
@@ -207,5 +208,177 @@ func TestSubmissionHandlerRejectsWrongMethod(t *testing.T) {
 
 	if store.calls != 0 {
 		t.Fatal("GET request must not create a submission")
+	}
+}
+
+func TestSubmissionHandlerRateLimitsByIP(t *testing.T) {
+	store := &submissionCreatorStub{
+		result: &models.Submission{ID: "test-submission"},
+	}
+
+	limiter := NewSubmissionRateLimiter(1, 10, time.Minute)
+	handler := NewSubmissionHandlerWithLimiter(store, limiter)
+
+	sendRequest := func() *httptest.ResponseRecorder {
+		body := `{"public_id":"` + handlerTestPublicID +
+			`","data":{"name":"Joseph"}}`
+
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/submissions",
+			strings.NewReader(body),
+		)
+		request.RemoteAddr = "192.0.2.10:1234"
+		request.Header.Set("Content-Type", "application/json")
+
+		response := httptest.NewRecorder()
+		handler.Create(response, request)
+		return response
+	}
+
+	first := sendRequest()
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first request: expected 201, got %d", first.Code)
+	}
+
+	second := sendRequest()
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", second.Code)
+	}
+
+	if store.calls != 1 {
+		t.Fatalf("expected one service call, got %d", store.calls)
+	}
+}
+
+func TestSubmissionHandlerRateLimitsByWidget(t *testing.T) {
+	store := &submissionCreatorStub{
+		result: &models.Submission{ID: "test-submission"},
+	}
+
+	limiter := NewSubmissionRateLimiter(10, 1, time.Minute)
+	handler := NewSubmissionHandlerWithLimiter(store, limiter)
+
+	sendRequest := func(remoteAddr string) *httptest.ResponseRecorder {
+		body := `{"public_id":"` + handlerTestPublicID +
+			`","data":{"name":"Joseph"}}`
+
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/submissions",
+			strings.NewReader(body),
+		)
+		request.RemoteAddr = remoteAddr
+		request.Header.Set("Content-Type", "application/json")
+
+		response := httptest.NewRecorder()
+		handler.Create(response, request)
+		return response
+	}
+
+	first := sendRequest("192.0.2.10:1234")
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first request: expected 201, got %d", first.Code)
+	}
+
+	second := sendRequest("192.0.2.11:1234")
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", second.Code)
+	}
+
+	if store.calls != 1 {
+		t.Fatalf("expected one service call, got %d", store.calls)
+	}
+}
+
+func TestSubmissionHandlerHoneypotReturnsGenericAcceptedResponse(
+	t *testing.T,
+) {
+	normalStore := &submissionCreatorStub{
+		result: &models.Submission{ID: "normal-submission"},
+	}
+	normalHandler := NewSubmissionHandler(normalStore)
+
+	normalRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/submissions",
+		strings.NewReader(
+			`{"public_id":"`+handlerTestPublicID+
+				`","data":{"name":"Joseph"}}`,
+		),
+	)
+	normalRequest.Header.Set("Content-Type", "application/json")
+	normalResponse := httptest.NewRecorder()
+	normalHandler.Create(normalResponse, normalRequest)
+
+	if normalResponse.Code != http.StatusCreated {
+		t.Fatalf("normal request returned %d", normalResponse.Code)
+	}
+
+	botStore := &submissionCreatorStub{}
+	botHandler := NewSubmissionHandler(botStore)
+
+	botRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/submissions",
+		strings.NewReader(
+			`{"public_id":"`+handlerTestPublicID+
+				`","company_website":"https://spam.example",`+
+				`"data":{"name":"Joseph"}}`,
+		),
+	)
+	botRequest.Header.Set("Content-Type", "application/json")
+	botResponse := httptest.NewRecorder()
+	botHandler.Create(botResponse, botRequest)
+
+	if botResponse.Code != normalResponse.Code {
+		t.Fatalf(
+			"bot response status %d differs from normal status %d",
+			botResponse.Code,
+			normalResponse.Code,
+		)
+	}
+
+	if botResponse.Body.String() != normalResponse.Body.String() {
+		t.Fatalf("bot response differs from normal accepted response")
+	}
+
+	if botStore.calls != 0 {
+		t.Fatalf(
+			"honeypot request reached submission service %d times",
+			botStore.calls,
+		)
+	}
+}
+
+func TestSubmissionHandlerEmptyHoneypotAllowsSubmission(t *testing.T) {
+	store := &submissionCreatorStub{
+		result: &models.Submission{ID: "normal-submission"},
+	}
+	handler := NewSubmissionHandler(store)
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/submissions",
+		strings.NewReader(
+			`{"public_id":"`+handlerTestPublicID+
+				`","company_website":"   ","data":{"name":"Joseph"}}`,
+		),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf(
+			"expected 201 for empty honeypot, got %d: %s",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	if store.calls != 1 {
+		t.Fatalf("expected one service call, got %d", store.calls)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Nezzy-joe/nez-widget-platform/internal/models"
 	"github.com/Nezzy-joe/nez-widget-platform/internal/services"
@@ -25,19 +26,46 @@ type submissionCreator interface {
 	) (*models.Submission, error)
 }
 
+const (
+	defaultSubmissionIPLimit     = 20
+	defaultSubmissionWidgetLimit = 100
+)
+
 type SubmissionHandler struct {
 	submissions submissionCreator
+	limiter     *SubmissionRateLimiter
 }
 
 func NewSubmissionHandler(
 	submissions submissionCreator,
 ) *SubmissionHandler {
-	return &SubmissionHandler{submissions: submissions}
+	return NewSubmissionHandlerWithLimiter(submissions, nil)
+}
+
+// NewSubmissionHandlerWithLimiter permits custom limits for tests
+// and controlled configuration.
+func NewSubmissionHandlerWithLimiter(
+	submissions submissionCreator,
+	limiter *SubmissionRateLimiter,
+) *SubmissionHandler {
+	if limiter == nil {
+		limiter = NewSubmissionRateLimiter(
+			defaultSubmissionIPLimit,
+			defaultSubmissionWidgetLimit,
+			time.Minute,
+		)
+	}
+
+	return &SubmissionHandler{
+		submissions: submissions,
+		limiter:     limiter,
+	}
 }
 
 type publicSubmissionRequest struct {
-	PublicID string          `json:"public_id"`
-	Data     json.RawMessage `json:"data"`
+	PublicID       string          `json:"public_id"`
+	Data           json.RawMessage `json:"data"`
+	CompanyWebsite json.RawMessage `json:"company_website"`
 }
 
 // Create accepts submissions from external websites.
@@ -73,12 +101,26 @@ func (h *SubmissionHandler) Create(
 		writeError(w, http.StatusBadRequest, "invalid public widget ID")
 		return
 	}
+	clientIP := submissionClientIP(r)
+
+	if !h.limiter.Allow(clientIP, input.PublicID) {
+		writeError(
+			w,
+			http.StatusTooManyRequests,
+			"too many submissions; try again later",
+		)
+		return
+	}
+	if submissionHoneypotTriggered(input.CompanyWebsite) {
+		writeSubmissionAccepted(w)
+		return
+	}
 
 	created, err := h.submissions.Create(
 		r.Context(),
 		input.PublicID,
 		input.Data,
-		submissionClientIP(r),
+		clientIP,
 	)
 	if err != nil {
 		writeSubmissionError(w, err)
@@ -92,12 +134,9 @@ func (h *SubmissionHandler) Create(
 	}
 
 	// Do not expose submission IDs, tenant IDs, or visitor data publicly.
-	writeJSON(w, http.StatusCreated, map[string]string{
-		"status": "accepted",
-	})
+	writeSubmissionAccepted(w)
 }
 
-// Trust the direct connection address. Do not trust forwarded IP headers
 // until the application has an explicitly configured trusted-proxy policy.
 func submissionClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -126,4 +165,26 @@ func writeSubmissionError(w http.ResponseWriter, err error) {
 		log.Printf("create submission failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "submission failed")
 	}
+}
+func submissionHoneypotTriggered(raw json.RawMessage) bool {
+	value := strings.TrimSpace(string(raw))
+
+	if value == "" || value == "null" {
+		return false
+	}
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		// The honeypot should contain a string. Treat other non-empty
+		// values as suspicious rather than revealing the trap.
+		return true
+	}
+
+	return strings.TrimSpace(text) != ""
+}
+
+func writeSubmissionAccepted(w http.ResponseWriter) {
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"status": "accepted",
+	})
 }
