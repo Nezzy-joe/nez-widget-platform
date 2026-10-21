@@ -82,24 +82,43 @@ showed one loaded record named `Capstone Test`, associated with
 `Capstone Demo Widget`. This was a manual browser test, not an automated
 browser test.
 
+
+### 8. Malformed and oversized submission payloads — verified locally
+
+Malformed JSON probe:
+
+    curl -sS -i -X POST http://127.0.0.1:8080/submissions -H 'Content-Type: application/json' --data-binary '{"public_id":'
+
+Observed result: HTTP 400 Bad Request with
+`{"error":"invalid JSON request"}`.
+
+Oversized probe: `/tmp/nez-oversized-submission.json`, 20,078 bytes,
+containing a valid public ID and a 20,000-character message.
+
+Observed result: HTTP 413 Request Entity Too Large with
+`{"error":"request body too large"}`.
+
+Both responses included CORS headers and `Cache-Control: no-store`.
+These were live local API probes.
+
 ## Section 6 acceptance checklist
 
 | Requirement | Status | Remaining proof or notes |
 |---|---|---|
-| Authenticated widget CRUD | Partial | UI create/edit/delete tested; capture unauthenticated API rejection and API-level CRUD transcript |
-| Tenant isolation for widgets and submissions | Pending | Run repository integration tests with `DATABASE_URL` set to the test database; capture test names and output |
+| Authenticated widget CRUD | Verified manually | Unauthenticated GET /widgets returned HTTP 401. Authenticated CRUD: POST returned 201; GET returned 200; PUT returned 200 and a fresh GET confirmed the updated title; DELETE returned 204 and a subsequent GET returned 404. Temporary test widget deleted. |
+| Tenant isolation for widgets and submissions | Verified | PostgreSQL integration tests passed: `TestWidgetRepositoryTenantIsolation` rejected cross-tenant get, update and delete; `TestSubmissionRepositoryListByTenantIsolationAndPagination` verified tenant isolation; `TestSubmissionAnalyticsTenantIsolationAndWindows` verified analytics tenant isolation. |
 | Per-widget embed snippet | Verified manually | Dashboard and seed now generate a single script tag with `widget_id`; the legacy container embed remains supported |
-| Public config cache headers | Pending | Capture status and Cache-Control headers from `/public/widgets/{publicID}` |
-| Versioned JavaScript asset | Partial | Endpoint is `/widget/v1/widget.js`; capture its response headers and body status |
+| Public config cache headers | Verified locally | GET returned HTTP 200, `Cache-Control: public, max-age=60`, and `Access-Control-Allow-Origin: *` |
+| Versioned JavaScript asset | Verified locally | HEAD returned HTTP 200, `Cache-Control: public, max-age=300`, JavaScript content type, and `X-Content-Type-Options: nosniff` |
 | Rendering from a second origin | Verified manually | Test page on port 8002 loaded the script from port 8080; form rendered and submission succeeded |
-| CORS preflight and cross-origin submission | Pending | Capture OPTIONS response and a successful cross-origin submission |
-| Malformed and oversized payloads return JSON 4xx | Pending | Test both cases and capture status plus JSON response |
-| Valid submission stored for correct widget/tenant | Manual smoke test done | Capture submission API response and matching authenticated dashboard query |
-| Rate limit returns 429; normal traffic recovers | Pending | Run a controlled burst, record 429 response(s), then prove a normal request succeeds |
-| Honeypot blocks spam | Pending | Capture a request containing the honeypot field and the expected outcome |
-| Provider A fallback to provider B | Unit tests included in provider package | Capture verbose test names/output or a deterministic provider test |
-| All geolocation providers unavailable, submission still succeeds | Pending dedicated proof | Force both providers to fail and capture a successful stored submission without geo |
-| Confirmation side-effect failure does not block persistence | Pending dedicated proof | Force the side effect to fail and capture successful storage |
+| CORS preflight and cross-origin submission | Verified manually | OPTIONS returned HTTP 204 with allowed origin `*` and methods `POST, OPTIONS`; the cross-origin submission was accepted and appeared in the dashboard |
+| Malformed and oversized payloads return JSON 4xx | Verified locally | Malformed JSON: HTTP 400, `{"error":"invalid JSON request"}`. 20,078-byte request: HTTP 413, `{"error":"request body too large"}` |
+| Valid submission stored for correct widget/tenant | Verified manually | `Capstone Test` appeared under `Capstone Demo Widget` in the owning demo account's Submissions page |
+| Rate limit returns 429; normal traffic recovers | Verified | 21-request burst: requests 1–20 returned HTTP 201; request 21 returned HTTP 429. After 65 seconds, a legitimate submission returned HTTP 201. |
+| Honeypot blocks spam | Verified | Twenty requests with a non-empty company_website returned HTTP 201, followed by HTTP 429 when the rate limit was reached. Dashboard verification showed only the two legitimate submissions, Rate Limit Recovery and Capstone Test; no Bot probe records appeared. |
+| Provider A fallback to provider B | Verified | `TestGeoLocatorFallsBackWhenPrimaryFails` passed; `TestGeoLocatorReturnsErrorWhenAllProvidersFail` passed. Verbose output captured from deterministic provider unit tests. |
+| All geolocation providers unavailable, submission still succeeds | Verified | `TestSubmissionServiceStoresSubmissionWhenGeolocationFails` passed. Log: geolocation unavailable; continuing without location data. The service test confirms submission storage despite geolocation failure. |
+| Confirmation side-effect failure does not block persistence | Verified | `TestWorkerSchedulesRetryOnFailure` passed. `TestJobRepositoryLifecycle` passed against PostgreSQL and confirmed the submission remained stored after the confirmation job exhausted its retries and reached failed status. |
 | Required documentation and setup | In progress | Complete README, this checklist, and BUILDLOG; verify clean setup |
 
 ## Shared capstone requirements

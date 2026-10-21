@@ -252,4 +252,12 @@ func TestJobRepositoryLifecycle(t *testing.T) {
 		t.Fatalf("unexpected final state: status=%q attempts=%d",
 			finalStatus, attempts)
 	}
+	var persistedSubmissionCount int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM submissions WHERE id = $1 AND tenant_id = $2`, retrySubmission.ID, tenantID).Scan(&persistedSubmissionCount)
+	if err != nil {
+		t.Fatalf("read submission after notification failure: %v", err)
+	}
+	if persistedSubmissionCount != 1 {
+		t.Fatalf("expected submission to remain stored after notification failure, got count %d", persistedSubmissionCount)
+	}
 }
