@@ -1,0 +1,17 @@
+run: "./scripts/dev.sh"
+seed: "./scripts/seed.sh"
+test: "go test ./... && (cd web && npm run build && npm run lint)"
+base_url: "http://127.0.0.1:8080"
+
+endpoints:
+  health: "GET /health"
+  register: "POST /auth/register"
+  login: "POST /auth/login"
+  current_user: "GET /auth/me"
+  widgets_list_create: "GET, POST /widgets"
+  widget_read_update_delete: "GET, PUT, DELETE /widgets/{id}"
+  public_widget_config: "GET /public/widgets/{publicID}"
+  widget_script: "GET /widget/v1/widget.js"
+  public_submission: "POST /submissions"
+  dashboard_submissions: "GET /dashboard/submissions"
+  dashboard_analytics: "GET /dashboard/analytics"

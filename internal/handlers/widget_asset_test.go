@@ -12,7 +12,7 @@ func TestWidgetAssetServesEmbeddedJavaScript(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/widget/v1/widget.js",
+		"/widget/v1/widget.js?widget_id=2b3c1f9180aadf6a90704446a4458b8d592a",
 		nil,
 	)
 	rec := httptest.NewRecorder()
@@ -40,6 +40,7 @@ func TestWidgetAssetServesEmbeddedJavaScript(t *testing.T) {
 	body := rec.Body.String()
 	for _, marker := range []string{
 		"data-nez-widget",
+		"searchParams.get",
 		"/public/widgets/",
 		"/submissions",
 	} {

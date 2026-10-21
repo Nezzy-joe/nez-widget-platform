@@ -25,7 +25,7 @@ and authenticated dashboard APIs.
 - PostgreSQL
 - Docker
 - Vanilla JavaScript for the embeddable widget
-- React, TypeScript, GSAP, React Bits, and Lenis are planned for the
+- React, TypeScript, Vite, Tailwind CSS, GSAP, and Lenis for the
   dashboard frontend.
 
 ## API endpoints
@@ -57,10 +57,8 @@ Add this HTML to the website where the form should appear. Replace
 `YOUR_API_HOST` with the public base URL of your deployed API.
 
 ```html
-<div data-nez-widget="YOUR_PUBLIC_WIDGET_ID"></div>
-
 <script
-  src="https://YOUR_API_HOST/widget/v1/widget.js"
+  src="https://YOUR_API_HOST/widget/v1/widget.js?widget_id=YOUR_PUBLIC_WIDGET_ID"
   defer
 ></script>
 ```
@@ -68,10 +66,8 @@ Add this HTML to the website where the form should appear. Replace
 For local development, the script URL can use your local API, for example:
 
 ```html
-<div data-nez-widget="YOUR_PUBLIC_WIDGET_ID"></div>
-
 <script
-  src="http://localhost:8080/widget/v1/widget.js"
+  src="http://127.0.0.1:8080/widget/v1/widget.js?widget_id=YOUR_PUBLIC_WIDGET_ID"
   defer
 ></script>
 ```
@@ -102,11 +98,13 @@ Configure the required environment variables using `.env.example`.
 Keep real credentials in `.env` or your deployment's secret manager.
 Never commit secrets.
 
-Start the API using:
+Start the complete local stack from the repository root:
 
 ```bash
-go run ./cmd/api
+./scripts/dev.sh
 ```
+
+With the API running, create or reuse demo data from a second terminal by running `./scripts/seed.sh`. The script prompts for credentials and avoids creating a duplicate demo widget.
 
 Run the Go test suite:
 
@@ -131,5 +129,22 @@ The Go backend now includes widget management, public submissions, background
 processing, and dashboard submission and analytics APIs. The versioned
 JavaScript bundle is served by the API.
 
-The polished dashboard frontend, including the agreed Apple-inspired visual
-system and animation stack, remains planned work.
+The React + TypeScript dashboard is implemented with authentication,
+widget management, submissions, analytics, and light/dark mode. The frontend
+build and lint checks have passed in the development environment. See
+EVIDENCE.md for the status of the remaining acceptance tests.
+
+## Architecture
+
+```text
+Widget owner -> React/TypeScript dashboard -> Go HTTP API
+                                            -> Auth and tenant identity
+                                            -> Widget/submission services
+                                            -> PostgreSQL repositories
+                                            -> Background confirmation jobs
+
+External website -> Versioned widget JS
+                 -> Public config and submission APIs
+                 -> Validation, rate limits, honeypot
+                 -> Geolocation fallback -> PostgreSQL
+```

@@ -13,3 +13,6 @@ nez-widget-platform
 .vscode/
 .idea/
 .DS_Store
+
+# Vite optimizer cache
+.vite/

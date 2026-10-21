@@ -6,7 +6,9 @@
     return;
   }
 
-  var apiBase = new URL(script.src, window.location.href).origin;
+  var scriptURL = new URL(script.src, window.location.href);
+  var apiBase = scriptURL.origin;
+  var scriptWidgetID = (scriptURL.searchParams.get("widget_id") || "").trim();
   var publicIDPattern = /^[0-9a-f]{36}$/;
   var styleID = "nez-widget-v1-styles";
 
@@ -287,7 +289,28 @@
   }
 
   function boot() {
-    var roots = document.querySelectorAll("[data-nez-widget]");
+    var roots = Array.prototype.slice.call(
+      document.querySelectorAll("[data-nez-widget]")
+    );
+
+    if (scriptWidgetID) {
+      var root = document.createElement("div");
+      root.setAttribute("data-nez-widget", scriptWidgetID);
+      root.setAttribute("data-nez-widget-source", "script");
+
+      if (
+        script.parentNode &&
+        script.parentNode !== document.head &&
+        script.parentNode !== document.documentElement
+      ) {
+        script.parentNode.insertBefore(root, script.nextSibling);
+      } else {
+        (document.body || document.documentElement).appendChild(root);
+      }
+
+      roots.push(root);
+    }
+
     roots.forEach(function (root) {
       initWidget(root);
     });
