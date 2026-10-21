@@ -32,9 +32,9 @@ results, and performed manual dashboard checks.
   commands were used afterward, and resulting files were inspected.
 - The migration helper checks whether expected tables exist. It is a local
   development convenience, not a complete version-tracked migration system.
-- The development launcher printed an initial connection-refused message
-  while the API was starting, then reached a healthy state. The health check
-  should be made quieter or more explicit in a future refinement.
+- During startup, the API can briefly refuse connections while becoming
+  healthy. The launcher suppresses readiness-probe output and reports an
+  explicit error with logs if the API does not become healthy.
 
 ### Verified checks
 
@@ -53,12 +53,17 @@ results, and performed manual dashboard checks.
   account's Submissions page then showed the `Capstone Test` record for
   `Capstone Demo Widget`. This was a manual browser test.
 
-### Work still requiring evidence
+### Acceptance evidence and remaining work
 
-See `EVIDENCE.md`. The remaining acceptance work includes API-level tenant
-isolation proof, cache and CORS transcripts, malformed and oversized request
-tests, rate-limit recovery, honeypot behaviour, deterministic provider fallback,
-and confirmation-side-effect failure behaviour.
+See `EVIDENCE.md` for the current acceptance checklist. Current evidence
+includes authenticated widget CRUD, PostgreSQL tenant-isolation tests, cache
+and CORS headers, malformed and oversized payload rejection, rate-limit
+recovery, honeypot handling, geolocation fallback and graceful degradation,
+and submission persistence after confirmation-job retry exhaustion.
+
+Documentation and setup remain in progress until the README, manifest, and
+evidence are checked against the actual startup scripts and a repeatable
+setup, and the latest repository state is pushed.
 
 The initial embed implementation used a container element plus a script
 tag. During final review, the loader was extended to support a single-script

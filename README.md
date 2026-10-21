@@ -94,9 +94,18 @@ dropdown option lists are not yet part of the widget data model.
 
 ## Development
 
-Configure the required environment variables using `.env.example`.
-Keep real credentials in `.env` or your deployment's secret manager.
-Never commit secrets.
+### Prerequisites
+
+Use a Linux development environment with Bash, Docker Engine and Docker Compose, Go, Node.js/npm, `curl`, `ss` (provided by `iproute2`), and `jq` for demo seeding.
+
+### First-time configuration
+
+1. Copy the environment template: `cp .env.example .env`.
+2. In `.env`, replace the placeholder `POSTGRES_PASSWORD` and use the same password in `DATABASE_URL`.
+3. Replace `JWT_SECRET` with a random secret at least 32 bytes long.
+4. Keep real credentials in `.env` or your deployment's secret manager. Never commit `.env`.
+
+The development launcher starts PostgreSQL, runs `scripts/migrate.sh`, builds the API, and starts the dashboard. The migration helper checks for expected tables; it does not maintain a full migration-version ledger.
 
 Start the complete local stack from the repository root:
 

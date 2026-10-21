@@ -123,20 +123,13 @@ These were live local API probes.
 
 ## Shared capstone requirements
 
-- Layered architecture: inspect and document the HTTP, service, repository, and
-  model boundaries during final code review.
-- Boundary validation: the full Go test suite passes; capture named malformed
-  input and oversized-body test output.
-- Background job and retries: background-job implementation and migrations
-  exist; capture retry/failure behaviour with a focused test.
-- Persistence, migrations, indexes, tenant scope: migrations define the schema
-  and indexes; tenant-isolation integration proof remains outstanding.
-- Idempotency: the seed command is repeatable; the jobs migration includes a
-  unique constraint on `(submission_id, job_type)`.
-- Secret handling: `.env` was confirmed untracked and ignored by Git. Recheck
-  staged files before every commit.
-- AI cost tracking: the application does not currently make AI-model calls;
-  per-call AI cost tracking is therefore not applicable to runtime behaviour.
+- Layered architecture: README documents the HTTP API, authentication and tenant identity, services, PostgreSQL repositories, and background confirmation jobs.
+- Boundary validation: `go test ./...` passed. Section 8 records live malformed-JSON HTTP 400 and oversized-body HTTP 413 probes.
+- Background jobs and retries: `TestWorkerSchedulesRetryOnFailure` and PostgreSQL `TestJobRepositoryLifecycle` passed. The integration test verifies submission persistence after retry exhaustion.
+- Persistence, migrations, indexes, and tenant scope: PostgreSQL integration tests passed for widget isolation, submission isolation and pagination, and analytics isolation. The migration helper is documented as a local development convenience, not a full migration ledger.
+- Idempotency: the seed command is repeatable; the jobs migration includes a unique constraint on `(submission_id, job_type)`.
+- Secret handling: `.env` is ignored and untracked. Check staged files before every commit.
+- AI cost tracking: the application does not currently make AI-model calls, so per-call AI cost tracking is not applicable to runtime behaviour.
 
 ## Final evidence pass
 
