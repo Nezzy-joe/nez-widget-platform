@@ -119,7 +119,7 @@ These were live local API probes.
 | Provider A fallback to provider B | Verified | `TestGeoLocatorFallsBackWhenPrimaryFails` passed; `TestGeoLocatorReturnsErrorWhenAllProvidersFail` passed. Verbose output captured from deterministic provider unit tests. |
 | All geolocation providers unavailable, submission still succeeds | Verified | `TestSubmissionServiceStoresSubmissionWhenGeolocationFails` passed. Log: geolocation unavailable; continuing without location data. The service test confirms submission storage despite geolocation failure. |
 | Confirmation side-effect failure does not block persistence | Verified | `TestWorkerSchedulesRetryOnFailure` passed. `TestJobRepositoryLifecycle` passed against PostgreSQL and confirmed the submission remained stored after the confirmation job exhausted its retries and reached failed status. |
-| Required documentation and setup | In progress | Complete README, this checklist, and BUILDLOG; verify clean setup |
+| Required documentation and setup | Verified locally | README, capstone.yaml, BUILDLOG, and EVIDENCE document setup and use. Shell syntax checks passed; migrations 001-003 were already applied; API health reported database ok; dashboard returned HTTP 200. Verified in the existing local workspace; a fresh clone has not been independently tested. |
 
 ## Shared capstone requirements
 
