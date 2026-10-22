@@ -141,7 +141,7 @@ JavaScript bundle is served by the API.
 The React + TypeScript dashboard is implemented with authentication,
 widget management, submissions, analytics, and light/dark mode. The frontend
 build and lint checks have passed in the development environment. See
-EVIDENCE.md for the status of the remaining acceptance tests.
+EVIDENCE.md for acceptance results and documented limitations.
 
 ## Architecture
 

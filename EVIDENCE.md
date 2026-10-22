@@ -133,6 +133,6 @@ These were live local API probes.
 
 ## Final evidence pass
 
-Before submission, replace pending rows with the exact command/test name,
-relevant output, or an appropriately stored screenshot/transcript. Do not
-mark a row complete merely because the implementation appears to exist.
+All Section 6 requirements have a recorded status and supporting evidence above.
+The setup smoke test passed in the existing local workspace. A fresh-clone setup
+has not been independently tested; this limitation is stated in the checklist.

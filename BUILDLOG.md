@@ -61,9 +61,10 @@ and CORS headers, malformed and oversized payload rejection, rate-limit
 recovery, honeypot handling, geolocation fallback and graceful degradation,
 and submission persistence after confirmation-job retry exhaustion.
 
-Documentation and setup remain in progress until the README, manifest, and
-evidence are checked against the actual startup scripts and a repeatable
-setup, and the latest repository state is pushed.
+Documentation and setup were verified in the existing local workspace:
+shell script syntax checks passed, migrations 001–003 were already applied,
+API health reported database health, and the dashboard returned HTTP 200.
+A fresh-clone setup has not been independently tested; see `EVIDENCE.md`.
 
 The initial embed implementation used a container element plus a script
 tag. During final review, the loader was extended to support a single-script
@@ -77,5 +78,5 @@ demo account's Submissions dashboard.
 Suggested commands and edits were checked against actual project files and
 terminal output. A suggested change was not treated as successful merely
 because it had been proposed. The owner should review all final code and
-documentation, run the remaining acceptance tests, and ensure that the
+documentation, review the recorded acceptance evidence, and ensure that the
 submitted repository contains no secrets.
